@@ -1,7 +1,7 @@
 // src/routes/auth.ts
 import { Hono } from "hono";
 import { userDatabase } from "../services/userDatabase";
-import { setCookie, deleteCookie } from "hono/cookie";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 
 const app = new Hono();
 
@@ -156,7 +156,7 @@ app.post("/auth/login", async (c) => {
 // Logout endpoint
 app.post("/auth/logout", async (c) => {
   try {
-    const token = c.req.cookie("session_token");
+    const token = getCookie(c, "session_token");
 
     if (token) {
       userDatabase.deleteSession(token);
@@ -183,7 +183,7 @@ app.post("/auth/logout", async (c) => {
 // Check auth status
 app.get("/auth/me", async (c) => {
   try {
-    const token = c.req.cookie("session_token");
+    const token = getCookie(c, "session_token");
 
     if (!token) {
       return c.json(

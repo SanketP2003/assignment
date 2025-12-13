@@ -1,5 +1,6 @@
 // src/middleware/auth.ts
 import { Context, Next } from "hono";
+import { getCookie } from "hono/cookie";
 import { userDatabase, User } from "../services/userDatabase";
 
 // Extend Context type to include user
@@ -28,7 +29,7 @@ export async function authMiddleware(c: Context, next: Next) {
   // Check for session token
   const token =
     c.req.header("Authorization")?.replace("Bearer ", "") ||
-    c.req.cookie("session_token");
+    getCookie(c, "session_token");
 
   if (!token) {
     return c.json({ success: false, message: "Authentication required" }, 401);

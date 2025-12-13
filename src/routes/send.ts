@@ -1,19 +1,19 @@
-// src/routes/send.ts - COMPLETE FIX WITH USER ID SUPPORT
+// src/routes/send.ts - MIGRATED TO NODE.JS
 import { Hono } from "hono";
-import { emailService } from "../services/emailService";
-import { batchService } from "../services/batchService";
-import { schedulerService } from "../services/schedulerService";
-import { notificationService } from "../services/notificationService";
-import { ProviderDetection } from "../services/providerLimits";
-import { FileService } from "../services/fileService";
-import { userDatabase } from "../services/userDatabase";
-import { requireAuth } from "../middleware/auth";
+import { emailService } from "../services/emailService.js";
+import { batchService } from "../services/batchService.js";
+import { schedulerService } from "../services/schedulerService.js";
+import { notificationService } from "../services/notificationService.js";
+import { ProviderDetection } from "../services/providerLimits.js";
+import { FileService } from "../services/fileService.js";
+import { userDatabase } from "../services/userDatabase.js";
+import { requireAuth } from "../middleware/auth.js";
 import type {
   EmailJob,
   EmailConfig,
   BatchConfig,
   NotificationConfig,
-} from "../types";
+} from "../types.js";
 
 const app = new Hono();
 
@@ -44,18 +44,15 @@ app.post("/send", async (c) => {
 
     const formData = await c.req.formData();
 
-    // Get configuration ID from form data
     const configId = formData.get("configId") as string;
     console.log(`🔧 Using config ID: ${configId}`);
 
-    // Get user's configuration
     let userConfig = null;
     if (configId) {
       const userConfigs = userDatabase.getUserSMTPConfigs(user.id);
       userConfig = userConfigs.find((config) => config.id === configId);
     }
 
-    // If no user config found, get default config
     if (!userConfig) {
       userConfig = userDatabase.getUserDefaultSMTPConfig(user.id);
     }
@@ -75,7 +72,6 @@ app.post("/send", async (c) => {
       `✅ Using SMTP config: ${userConfig.name} (${userConfig.host}:${userConfig.port})`
     );
 
-    // Extract form data with user config
     const smtpHost = userConfig.host;
     const smtpPort = userConfig.port;
     const smtpSecure = !!userConfig.secure;
@@ -88,13 +84,11 @@ app.post("/send", async (c) => {
     const htmlContent = (formData.get("htmlContent") as string) || "";
     const delay = parseInt(formData.get("delay") as string) || 20;
 
-    // Batch processing
     const useBatch = formData.get("useBatch") === "on";
     const batchSize = parseInt(formData.get("batchSize") as string) || 20;
     const batchDelay = parseInt(formData.get("batchDelay") as string) || 60;
     const emailDelay = parseInt(formData.get("emailDelay") as string) || 45;
 
-    // Scheduling
     const scheduleEmail = formData.get("scheduleEmail") === "on";
     const scheduledTime = formData.get("scheduledTime") as string;
     const notifyEmail = formData.get("notifyEmail") as string;
@@ -123,7 +117,6 @@ app.post("/send", async (c) => {
         : "none",
     });
 
-    // Validate required fields
     const missingFields = [];
     if (!smtpHost) missingFields.push("SMTP Host");
     if (!smtpUser) missingFields.push("SMTP User");
@@ -146,7 +139,6 @@ app.post("/send", async (c) => {
       return c.json({ success: false, message: "Excel file is required" }, 400);
     }
 
-    // Check content - HTML template OR editor content required
     if (!htmlTemplateFile || htmlTemplateFile.size === 0) {
       if (
         !htmlContent ||
@@ -164,7 +156,6 @@ app.post("/send", async (c) => {
       }
     }
 
-    // Configure email service
     const emailConfig: EmailConfig = {
       host: smtpHost,
       port: smtpPort,
@@ -172,7 +163,6 @@ app.post("/send", async (c) => {
       auth: { user: smtpUser, pass: smtpPass },
     };
 
-    // SMTP connection test
     console.log(
       `🔍 Testing SMTP connection to ${smtpHost}:${smtpPort} (secure: ${smtpSecure})...`
     );
@@ -237,7 +227,6 @@ app.post("/send", async (c) => {
       return c.json({ success: false, message: specificError }, 400);
     }
 
-    // Process Excel file
     let contacts = [];
     try {
       console.log("📊 Processing Excel file...");
@@ -250,13 +239,12 @@ app.post("/send", async (c) => {
       const allContacts = await FileService.parseExcelFile(filePath);
       console.log(`📋 Parsed ${allContacts.length} contacts from Excel file`);
 
-      // Apply email range selection
       const emailRangeStart = parseInt(formData.get("emailRangeStart") as string) || 0;
       const emailRangeCount = parseInt(formData.get("emailRangeCount") as string) || allContacts.length;
-      
+
       const endIndex = Math.min(emailRangeStart + emailRangeCount, allContacts.length);
       contacts = allContacts.slice(emailRangeStart, endIndex);
-      
+
       console.log(`📧 Email range selection: ${emailRangeStart + 1} to ${endIndex} (${contacts.length} contacts selected from ${allContacts.length} total)`);
     } catch (error) {
       console.error("Excel parsing error:", error);
@@ -271,7 +259,6 @@ app.post("/send", async (c) => {
       );
     }
 
-    // Check provider limits
     const maxContacts = ProviderDetection.calculateMaxContacts(
       smtpHost,
       !!notifyEmail
@@ -291,7 +278,6 @@ app.post("/send", async (c) => {
       );
     }
 
-    // Handle HTML template file if provided
     let finalHtmlContent = htmlContent;
     if (htmlTemplateFile && htmlTemplateFile.size > 0) {
       try {
@@ -317,7 +303,6 @@ app.post("/send", async (c) => {
       }
     }
 
-    // Create email job
     const emailJob: EmailJob = {
       contacts,
       htmlContent: finalHtmlContent,
@@ -328,7 +313,6 @@ app.post("/send", async (c) => {
       delay: useBatch ? emailDelay : delay,
     };
 
-    // Create batch config if needed
     const batchConfig: BatchConfig | null = useBatch
       ? {
           batchSize,
@@ -338,7 +322,6 @@ app.post("/send", async (c) => {
         }
       : null;
 
-    // Create notification settings
     const notificationSettings = notifyEmail
       ? {
           email: notifyEmail,
@@ -347,10 +330,8 @@ app.post("/send", async (c) => {
         }
       : undefined;
 
-    // Handle scheduling vs immediate sending
     if (scheduleEmail) {
-      // 🔥 FIX: scheduledTime is now UTC from frontend
-      const scheduledDate = new Date(scheduledTime); // Now gets proper UTC
+      const scheduledDate = new Date(scheduledTime);
 
       console.log(`📅 Received UTC time: ${scheduledTime}`);
       console.log(`⏰ Parsed as: ${scheduledDate.toISOString()}`);
@@ -365,12 +346,11 @@ app.post("/send", async (c) => {
         );
       }
 
-      // ✅ Your schedulerService.scheduleJob() already handles UTC correctly!
       const jobId = await schedulerService.scheduleJob(
         user.id,
         emailJob,
         batchConfig,
-        scheduledDate, // UTC time - schedulerService stores this correctly
+        scheduledDate,
         userConfig.name,
         notifyEmail,
         notifyBrowser
@@ -391,17 +371,15 @@ app.post("/send", async (c) => {
         configUsed: userConfig.name,
       });
     } else {
-      // Immediate sending
       if (useBatch) {
         console.log(
           `⚡ Starting BATCH email job: ${contacts.length} contacts in batches of ${batchSize}`
         );
 
-        // UPDATED: Pass notification settings to batch job
         const jobId = await batchService.startBatchJob(
           emailJob,
           batchConfig!,
-          notificationSettings // NEW parameter
+          notificationSettings
         );
 
         return c.json({
@@ -414,13 +392,11 @@ app.post("/send", async (c) => {
           configUsed: userConfig.name,
         });
       } else {
-        // Normal bulk sending
         console.log(
           `🚀 Starting normal bulk email job: ${contacts.length} contacts`
         );
         emailService.createTransport(emailConfig);
 
-        // UPDATED: Pass notification settings to bulk email
         emailService
           .sendBulkEmails(emailJob, notificationSettings)
           .catch((error) => {
@@ -449,7 +425,7 @@ app.post("/send", async (c) => {
   }
 });
 
-// NEW: Test notification endpoint
+// Test notification endpoint
 app.post("/test-notification", async (c) => {
   try {
     const user = requireAuth(c);
@@ -480,7 +456,6 @@ app.post("/test-notification", async (c) => {
   }
 });
 
-// Rest of existing endpoints...
 app.post("/provider-info", async (c) => {
   try {
     const formData = await c.req.formData();
@@ -587,3 +562,4 @@ app.delete("/batch-cancel", async (c) => {
 });
 
 export default app;
+

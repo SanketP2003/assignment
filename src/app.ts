@@ -1,22 +1,22 @@
-// src/app.ts - UPDATED WITH USER MANAGEMENT
+// src/app.ts - MIGRATED TO NODE.JS WITH @hono/node-server
+import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { serveStatic } from "hono/bun";
 import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import { config } from "dotenv";
 
 // Import middleware
-import { authMiddleware } from "./middleware/auth";
+import { authMiddleware } from "./middleware/auth.js";
 
 // Import routes
-import indexRoutes from "./routes/index";
-import authRoutes from "./routes/auth";
-import sendRoutes from "./routes/send";
-import reportRoutes from "./routes/report";
-import configRoutes from "./routes/config";
-import dashboardRoutes from "./routes/dashboard";
+import authRoutes from "./routes/auth.js";
+import sendRoutes from "./routes/send.js";
+import reportRoutes from "./routes/report.js";
+import configRoutes from "./routes/config.js";
+import dashboardRoutes from "./routes/dashboard.js";
 
 // Load environment variables
 config();
@@ -24,7 +24,10 @@ config();
 const app = new Hono();
 
 // Middleware
-app.use("*", cors());
+app.use("*", cors({
+  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  credentials: true,
+}));
 app.use("*", logger());
 
 // Apply authentication middleware to all routes except auth routes
@@ -34,32 +37,8 @@ app.use("*", async (c, next) => {
   // Public paths that don't require authentication
   const publicPaths = [
     "/auth/",
-    "/login",
-    "/register",
-    "/public/",
-    "/css/",
-    "/js/",
-    "/favicon.ico",
+    "/health",
   ];
-
-  // Special handling for root path - check auth and redirect accordingly
-  if (path === "/") {
-    const token = c.req.cookie("session_token");
-    if (!token) {
-      return c.redirect("/login");
-    }
-
-    // Validate token
-    const { userDatabase } = await import("./services/userDatabase");
-    const user = userDatabase.validateSession(token);
-    if (!user) {
-      return c.redirect("/login");
-    }
-
-    // User is authenticated, continue to dashboard
-    c.user = user;
-    return await next();
-  }
 
   // Skip auth for public paths
   if (publicPaths.some((p) => path.startsWith(p))) {
@@ -72,7 +51,7 @@ app.use("*", async (c, next) => {
 
 // Initialize directories
 async function initializeDirectories() {
-  const dirs = ["./uploads", "./logs", "./public", "./data"];
+  const dirs = ["./uploads", "./logs", "./data"];
   for (const dir of dirs) {
     if (!existsSync(dir)) {
       await mkdir(dir, { recursive: true });
@@ -80,40 +59,32 @@ async function initializeDirectories() {
   }
 }
 
-// Serve static files (must be before other routes)
-app.use("/public/*", serveStatic({ root: "./" }));
-app.use("/css/*", serveStatic({ root: "./public" }));
-app.use("/js/*", serveStatic({ root: "./public" }));
-
-// Login page route (public)
-app.get("/login", serveStatic({ path: "./public/login.html" }));
-
 // Routes
-app.route("/", authRoutes); // Auth routes (login, register, logout)
-app.route("/", indexRoutes); // Dashboard and main interface
-app.route("/", sendRoutes); // Email sending functionality
-app.route("/", reportRoutes); // Reports and analytics
-app.route("/", configRoutes); // User SMTP configurations
-app.route("/", dashboardRoutes);
+app.route("/auth", authRoutes);
+app.route("/", sendRoutes);
+app.route("/", reportRoutes);
+app.route("/", configRoutes);
+app.route("/dashboard", dashboardRoutes);
 
 // Health check
 app.get("/health", (c) => {
   return c.json({
     status: "OK",
     timestamp: new Date().toISOString(),
-    version: "2.0.0-with-auth",
+    version: "2.0.0-nodejs",
   });
 });
 
 // User info endpoint (for frontend)
 app.get("/user/info", async (c) => {
   try {
-    const token = c.req.cookie("session_token");
+    const { getCookie } = await import("hono/cookie");
+    const token = getCookie(c, "session_token");
     if (!token) {
       return c.json({ success: false, message: "Not authenticated" }, 401);
     }
 
-    const { userDatabase } = await import("./services/userDatabase");
+    const { userDatabase } = await import("./services/userDatabase.js");
     const user = userDatabase.validateSession(token);
     if (!user) {
       return c.json({ success: false, message: "Session expired" }, 401);
@@ -146,26 +117,12 @@ app.notFound((c) => {
     return c.json({ message: "Endpoint not found" }, 404);
   }
 
-  // For web requests, redirect to login or dashboard
-  const token = c.req.cookie("session_token");
-  if (!token) {
-    return c.redirect("/login");
-  }
-
-  return c.redirect("/");
+  return c.json({ message: "Not found" }, 404);
 });
 
 // Error handler
 app.onError((err, c) => {
   console.error("Application error:", err);
-
-  // If it's an authentication error, redirect to login
-  if (
-    err.message.includes("Authentication") ||
-    err.message.includes("Session")
-  ) {
-    return c.redirect("/login");
-  }
 
   return c.json(
     {
@@ -177,9 +134,9 @@ app.onError((err, c) => {
 });
 
 // Initialize and start server
-const port = process.env.PORT || 3000;
+const port = parseInt(process.env.PORT || "3000");
 
-console.log("🚀 Initializing Bulk Email Sender with User Management...");
+console.log("🚀 Initializing Bulk Email Sender with Node.js...");
 await initializeDirectories();
 
 // Display configuration status
@@ -202,13 +159,13 @@ console.log("✅ User-specific SMTP configurations");
 console.log("✅ Secure password hashing with Argon2");
 
 console.log(`\n🌐 Server starting on port ${port}`);
-console.log(`   🖥️  Dashboard: http://localhost:${port}`);
-console.log(`   🔑 Login Page: http://localhost:${port}/login`);
+console.log(`   🔌 API: http://localhost:${port}`);
+console.log(`   🖥️  Frontend: ${process.env.FRONTEND_URL || "http://localhost:5173"}`);
 
 // Clean up expired sessions on startup
 setTimeout(async () => {
   try {
-    const { userDatabase } = await import("./services/userDatabase");
+    const { userDatabase } = await import("./services/userDatabase.js");
     userDatabase.cleanExpiredSessions();
     console.log("🧹 Cleaned expired sessions on startup");
   } catch (error) {
@@ -216,7 +173,8 @@ setTimeout(async () => {
   }
 }, 1000);
 
-export default {
-  port,
+serve({
   fetch: app.fetch,
-};
+  port,
+});
+

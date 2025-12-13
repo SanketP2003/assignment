@@ -2,10 +2,12 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { serveStatic } from "hono/bun";
+import { getCookie } from "hono/cookie";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import { config } from "dotenv";
+import { serve } from "@hono/node-server";
 
 // Import middleware
 import { authMiddleware } from "./middleware/auth";
@@ -40,11 +42,12 @@ app.use("*", async (c, next) => {
     "/css/",
     "/js/",
     "/favicon.ico",
+    "/health",
   ];
 
   // Special handling for root path - check auth and redirect accordingly
   if (path === "/") {
-    const token = c.req.cookie("session_token");
+    const token = getCookie(c, "session_token");
     if (!token) {
       return c.redirect("/login");
     }
@@ -108,7 +111,7 @@ app.get("/health", (c) => {
 // User info endpoint (for frontend)
 app.get("/user/info", async (c) => {
   try {
-    const token = c.req.cookie("session_token");
+    const token = getCookie(c, "session_token");
     if (!token) {
       return c.json({ success: false, message: "Not authenticated" }, 401);
     }
@@ -147,7 +150,7 @@ app.notFound((c) => {
   }
 
   // For web requests, redirect to login or dashboard
-  const token = c.req.cookie("session_token");
+  const token = getCookie(c, "session_token");
   if (!token) {
     return c.redirect("/login");
   }
@@ -179,44 +182,49 @@ app.onError((err, c) => {
 // Initialize and start server
 const port = process.env.PORT || 3000;
 
-console.log("🚀 Initializing Bulk Email Sender with User Management...");
-await initializeDirectories();
+(async () => {
+  console.log("🚀 Initializing Bulk Email Sender with User Management...");
+  await initializeDirectories();
 
-// Display configuration status
-console.log("\n📋 Configuration Status:");
-if (process.env.SMTP_HOST) {
-  console.log("✅ Global SMTP configuration found in environment variables");
-  console.log(`   Host: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`);
-  console.log(`   User: ${process.env.SMTP_USER}`);
-  console.log(`   From: ${process.env.FROM_EMAIL}`);
-  console.log("   📝 Note: Users can create their own SMTP configurations");
-} else {
-  console.log("⚠️  No global SMTP configuration found in .env file");
-  console.log("   📝 Users will need to configure their own SMTP settings");
-}
-
-console.log("\n🔐 Authentication Features:");
-console.log("✅ User registration and login");
-console.log("✅ Session-based authentication");
-console.log("✅ User-specific SMTP configurations");
-console.log("✅ Secure password hashing with Argon2");
-
-console.log(`\n🌐 Server starting on port ${port}`);
-console.log(`   🖥️  Dashboard: http://localhost:${port}`);
-console.log(`   🔑 Login Page: http://localhost:${port}/login`);
-
-// Clean up expired sessions on startup
-setTimeout(async () => {
-  try {
-    const { userDatabase } = await import("./services/userDatabase");
-    userDatabase.cleanExpiredSessions();
-    console.log("🧹 Cleaned expired sessions on startup");
-  } catch (error) {
-    console.error("Error cleaning expired sessions:", error);
+  // Display configuration status
+  console.log("\n📋 Configuration Status:");
+  if (process.env.SMTP_HOST) {
+    console.log("✅ Global SMTP configuration found in environment variables");
+    console.log(`   Host: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`);
+    console.log(`   User: ${process.env.SMTP_USER}`);
+    console.log(`   From: ${process.env.FROM_EMAIL}`);
+    console.log("   📝 Note: Users can create their own SMTP configurations");
+  } else {
+    console.log("⚠️  No global SMTP configuration found in .env file");
+    console.log("   📝 Users will need to configure their own SMTP settings");
   }
-}, 1000);
 
-export default {
-  port,
-  fetch: app.fetch,
-};
+  console.log("\n🔐 Authentication Features:");
+  console.log("✅ User registration and login");
+  console.log("✅ Session-based authentication");
+  console.log("✅ User-specific SMTP configurations");
+  console.log("✅ Secure password hashing with Argon2");
+
+  console.log(`\n🌐 Server starting on port ${port}`);
+  console.log(`   🖥️  Dashboard: http://localhost:${port}`);
+  console.log(`   🔑 Login Page: http://localhost:${port}/login`);
+
+  // Clean up expired sessions on startup
+  setTimeout(async () => {
+    try {
+      const { userDatabase } = await import("./services/userDatabase");
+      userDatabase.cleanExpiredSessions();
+      console.log("🧹 Cleaned expired sessions on startup");
+    } catch (error) {
+      console.error("Error cleaning expired sessions:", error);
+    }
+  }, 1000);
+
+  // Start the server with Node.js
+  serve({
+    fetch: app.fetch,
+    port: Number(port),
+  });
+})();
+
+export default app;

@@ -1,4 +1,4 @@
-import XLSX from "xlsx";
+import * as XLSX from "xlsx";
 import { writeFile, readFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import type { Contact } from "../types";
@@ -12,7 +12,7 @@ export class FileService {
         throw new Error("File does not exist");
       }
 
-      // Read file as buffer and use XLSX.read instead of readFile
+      // Read file as buffer and use XLSX.read for ESM compatibility
       const fileBuffer = await readFile(filePath);
       const workbook = XLSX.read(fileBuffer, { type: "buffer" });
       const sheetName = workbook.SheetNames[0];

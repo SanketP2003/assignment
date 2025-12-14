@@ -41,8 +41,8 @@ class ConfigStore {
     this.isLoading = true;
     try {
       const res = await api.getSMTPConfigs();
-      if (res.success && res.data?.userConfigs) {
-        this.configs = res.data.userConfigs;
+      if (res.success && res.userConfigs) {
+        this.configs = res.userConfigs;
         const def = this.configs.find(c => c.isDefault);
         if (def && !this.selectedConfigId) this.selectedConfigId = def.id;
       }
@@ -74,6 +74,10 @@ class ConfigStore {
     const res = await api.setDefaultSMTPConfig(configId);
     if (res.success) await this.loadConfigs();
     return res;
+  }
+
+  async testConnection(config: { host: string; port: number; secure: boolean; user: string; pass: string }) {
+    return await api.testSMTPConnection(config);
   }
 
   selectConfig(configId: string) { this.selectedConfigId = configId; }

@@ -2,7 +2,7 @@ import type { User, SMTPConfig, EmailLog, EmailStats, ScheduledJob, BatchStatus 
 
 export type { User, SMTPConfig, EmailLog, EmailStats, ScheduledJob, BatchStatus };
 
-const API_BASE = '';
+const API_BASE = '/api';
 
 interface ApiResponse<T = unknown> {
   success: boolean;
@@ -45,7 +45,16 @@ class ApiClient {
   async getUserInfo() { return this.request<{ user: User }>('/user/info'); }
 
   async getSMTPConfigs() {
-    return this.request<{ userConfigs: SMTPConfig[]; hasConfig: boolean }>('/config/smtp');
+    const res = await fetch(`${this.baseUrl}/config/smtp`, {
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return res.json() as Promise<{
+      success: boolean;
+      userConfigs: SMTPConfig[];
+      hasConfig: boolean;
+      data?: any;
+    }>;
   }
 
   async createSMTPConfig(config: Omit<SMTPConfig, 'id' | 'createdAt'>) {
@@ -58,6 +67,13 @@ class ApiClient {
 
   async deleteSMTPConfig(configId: string) {
     return this.request(`/config/smtp/${configId}`, { method: 'DELETE' });
+  }
+
+  async testSMTPConnection(config: { host: string; port: number; secure: boolean; user: string; pass: string }) {
+    return this.request<{ message: string }>('/config/smtp/test', {
+      method: 'POST',
+      body: JSON.stringify(config)
+    });
   }
 
   async setDefaultSMTPConfig(configId: string) {

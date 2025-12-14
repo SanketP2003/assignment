@@ -36,8 +36,8 @@ app.use("*", async (c, next) => {
 
   // Public paths that don't require authentication
   const publicPaths = [
-    "/auth/",
-    "/health",
+    "/api/auth/",
+    "/api/health",
   ];
 
   // Skip auth for public paths
@@ -45,7 +45,12 @@ app.use("*", async (c, next) => {
     return await next();
   }
 
-  // Apply auth middleware for protected routes
+  // Skip auth for non-API routes (frontend routes)
+  if (!path.startsWith("/api/")) {
+    return await next();
+  }
+
+  // Apply auth middleware for protected API routes
   return await authMiddleware(c, next);
 });
 
@@ -59,15 +64,15 @@ async function initializeDirectories() {
   }
 }
 
-// Routes
-app.route("/auth", authRoutes);
-app.route("/", sendRoutes);
-app.route("/", reportRoutes);
-app.route("/", configRoutes);
-app.route("/dashboard", dashboardRoutes);
+// Routes - all under /api prefix
+app.route("/api/auth", authRoutes);
+app.route("/api", sendRoutes);
+app.route("/api", reportRoutes);
+app.route("/api", configRoutes);
+app.route("/api/dashboard", dashboardRoutes);
 
 // Health check
-app.get("/health", (c) => {
+app.get("/api/health", (c) => {
   return c.json({
     status: "OK",
     timestamp: new Date().toISOString(),
@@ -76,7 +81,7 @@ app.get("/health", (c) => {
 });
 
 // User info endpoint (for frontend)
-app.get("/user/info", async (c) => {
+app.get("/api/user/info", async (c) => {
   try {
     const { getCookie } = await import("hono/cookie");
     const token = getCookie(c, "session_token");
@@ -108,15 +113,11 @@ app.notFound((c) => {
   const path = c.req.path;
 
   // If it's an API call, return JSON
-  if (
-    path.startsWith("/api/") ||
-    path.startsWith("/config/") ||
-    path.startsWith("/send") ||
-    path.startsWith("/report")
-  ) {
+  if (path.startsWith("/api/")) {
     return c.json({ message: "Endpoint not found" }, 404);
   }
 
+  // For non-API routes, let the frontend handle it
   return c.json({ message: "Not found" }, 404);
 });
 

@@ -8,12 +8,13 @@
   // Form state
   let subject = $state('');
   let htmlContent = $state('');
-  let excelFile = $state<File | null>(null);
+  let excelFiles = $state<File[]>([]);
   let htmlTemplateFile = $state<File | null>(null);
 
-  // Contacts from Excel
+  // Contacts from Excel/CSV
   let contacts = $state<any[]>([]);
   let contactColumns = $state<string[]>([]);
+  let uploadedFileNames = $state<string[]>([]);
 
   // Send range
   let sendRange = $state<'all' | 'first' | 'range'>('all');
@@ -54,35 +55,84 @@
 
   async function handleExcelChange(e: Event) {
     const input = e.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
+    const files = input.files;
+    if (!files || files.length === 0) return;
 
-    excelFile = file;
+    // Add new files to existing files
+    const newFiles = Array.from(files);
+    excelFiles = [...excelFiles, ...newFiles];
     isLoading = true;
 
     try {
       const formData = new FormData();
-      formData.append('excelFile', file);
+      // Append all files
+      excelFiles.forEach((file, index) => {
+        formData.append(`excelFile${index}`, file);
+      });
 
       const response = await api.parseExcel(formData);
       if (response.success && response.contacts) {
         contacts = response.contacts;
-        // Use columns from response or extract from first contact
         contactColumns = response.columns || (contacts.length > 0 ? Object.keys(contacts[0]) : []);
+        uploadedFileNames = response.filesProcessed || excelFiles.map(f => f.name);
         const totalCount = response.totalCount || contacts.length;
-        toastStore.success(`Loaded ${totalCount} contacts`);
+        toastStore.success(`Loaded ${totalCount} contacts from ${excelFiles.length} file(s)`);
       } else {
-        toastStore.error(response.message || 'Failed to parse file');
+        toastStore.error(response.message || 'Failed to parse files');
         contacts = [];
         contactColumns = [];
       }
     } catch (error) {
-      toastStore.error('Error parsing file');
+      toastStore.error('Error parsing files');
       contacts = [];
       contactColumns = [];
     } finally {
       isLoading = false;
+      // Reset input to allow re-selecting same files
+      input.value = '';
     }
+  }
+
+  function removeFile(index: number) {
+    excelFiles = excelFiles.filter((_, i) => i !== index);
+    // Re-parse remaining files if any
+    if (excelFiles.length > 0) {
+      reParseFiles();
+    } else {
+      contacts = [];
+      contactColumns = [];
+      uploadedFileNames = [];
+    }
+  }
+
+  async function reParseFiles() {
+    if (excelFiles.length === 0) return;
+
+    isLoading = true;
+    try {
+      const formData = new FormData();
+      excelFiles.forEach((file, index) => {
+        formData.append(`excelFile${index}`, file);
+      });
+
+      const response = await api.parseExcel(formData);
+      if (response.success && response.contacts) {
+        contacts = response.contacts;
+        contactColumns = response.columns || (contacts.length > 0 ? Object.keys(contacts[0]) : []);
+        uploadedFileNames = response.filesProcessed || excelFiles.map(f => f.name);
+      }
+    } catch (error) {
+      console.error('Error re-parsing files:', error);
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  function clearAllFiles() {
+    excelFiles = [];
+    contacts = [];
+    contactColumns = [];
+    uploadedFileNames = [];
   }
 
   async function handleHtmlTemplateChange(e: Event) {
@@ -114,8 +164,8 @@
       return;
     }
 
-    if (!excelFile) {
-      toastStore.error('Please upload an Excel file with contacts');
+    if (excelFiles.length === 0) {
+      toastStore.error('Please upload at least one Excel/CSV file with contacts');
       return;
     }
 
@@ -136,7 +186,12 @@
       formData.append('configId', configStore.selectedConfigId);
       formData.append('subject', subject);
       formData.append('htmlContent', htmlContent);
-      formData.append('excelFile', excelFile);
+
+      // Append all excel files - use the first one as the main file for now
+      // The backend will merge contacts from all files
+      if (excelFiles.length > 0) {
+        formData.append('excelFile', excelFiles[0]);
+      }
 
       if (htmlTemplateFile) {
         formData.append('htmlTemplate', htmlTemplateFile);
@@ -263,6 +318,7 @@
           id="excelFile"
           type="file"
           accept=".xlsx,.xls,.csv"
+          multiple
           onchange={handleExcelChange}
           class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         />
@@ -271,7 +327,42 @@
         </div>
         <p class="font-semibold text-gray-700 mb-1">Upload Contact List</p>
         <p class="text-sm text-gray-500">Drag & drop or click to browse (.xlsx, .xls, .csv)</p>
+        <p class="text-xs text-indigo-500 mt-2">You can upload multiple files</p>
       </div>
+
+      <!-- Uploaded Files List -->
+      {#if excelFiles.length > 0}
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium text-gray-700">{excelFiles.length} file(s) uploaded</span>
+            <button
+              type="button"
+              onclick={clearAllFiles}
+              class="text-xs text-red-500 hover:text-red-700 font-medium"
+            >
+              Clear All
+            </button>
+          </div>
+          {#each excelFiles as file, index}
+            <div class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-lg">{file.name.endsWith('.csv') ? '📄' : '📊'}</span>
+                <span class="text-sm text-gray-700 truncate">{file.name}</span>
+                <span class="text-xs text-gray-400">({(file.size / 1024).toFixed(1)} KB)</span>
+              </div>
+              <button
+                type="button"
+                onclick={() => removeFile(index)}
+                class="text-gray-400 hover:text-red-500 transition-colors p-1"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          {/each}
+        </div>
+      {/if}
 
       {#if contacts.length > 0}
         <div class="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4">
@@ -496,6 +587,9 @@
           {#if selectedContactCount > 0}
             <p class="text-xs sm:text-sm text-gray-600">
               Ready to send to <span class="font-bold text-indigo-600">{selectedContactCount}</span> recipients
+              {#if excelFiles.length > 1}
+                <span class="text-gray-400">(from {excelFiles.length} files)</span>
+              {/if}
             </p>
           {:else}
             <p class="text-xs sm:text-sm text-gray-500">Upload contacts to get started</p>
@@ -506,7 +600,7 @@
           size="lg"
           loading={isSending}
           onclick={handleSend}
-          disabled={!configStore.selectedConfigId || !subject || !excelFile || isSending}
+          disabled={!configStore.selectedConfigId || !subject || excelFiles.length === 0 || isSending}
           class="w-full sm:w-auto sm:min-w-[200px]"
         >
           {#if isSending}

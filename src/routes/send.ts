@@ -522,40 +522,61 @@ app.delete("/scheduled-jobs/:id", async (c) => {
 app.post("/parse-excel", async (c) => {
   try {
     const formData = await c.req.formData();
-    const excelFile = formData.get("excelFile") as File;
 
-    if (!excelFile || excelFile.size === 0) {
-      return c.json({ success: false, message: "File is required" }, 400);
+    // Get all files from formData (supports multiple files)
+    const files: File[] = [];
+    for (const [key, value] of formData.entries()) {
+      if (key === 'excelFile' || key.startsWith('excelFile')) {
+        if (value instanceof File && value.size > 0) {
+          files.push(value);
+        }
+      }
     }
 
-    // Check file extension
-    const fileName = excelFile.name.toLowerCase();
-    const isCSV = fileName.endsWith('.csv');
-    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
-
-    if (!isCSV && !isExcel) {
-      return c.json({
-        success: false,
-        message: "Invalid file format. Please upload an Excel (.xlsx, .xls) or CSV (.csv) file"
-      }, 400);
+    if (files.length === 0) {
+      return c.json({ success: false, message: "At least one file is required" }, 400);
     }
 
-    const arrayBuffer = await excelFile.arrayBuffer();
-    const filename = `temp_${Date.now()}_${excelFile.name}`;
-    const filePath = await FileService.saveUploadedFile(
-      new Uint8Array(arrayBuffer),
-      filename
-    );
-    const contacts = await FileService.parseExcelFile(filePath);
+    let allContacts: any[] = [];
+    const processedFiles: string[] = [];
+
+    for (const file of files) {
+      // Check file extension
+      const fileName = file.name.toLowerCase();
+      const isCSV = fileName.endsWith('.csv');
+      const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+      if (!isCSV && !isExcel) {
+        return c.json({
+          success: false,
+          message: `Invalid file format: ${file.name}. Please upload Excel (.xlsx, .xls) or CSV (.csv) files only`
+        }, 400);
+      }
+
+      const arrayBuffer = await file.arrayBuffer();
+      const filename = `temp_${Date.now()}_${file.name}`;
+      const filePath = await FileService.saveUploadedFile(
+        new Uint8Array(arrayBuffer),
+        filename
+      );
+      const contacts = await FileService.parseExcelFile(filePath);
+
+      allContacts = allContacts.concat(contacts);
+      processedFiles.push(`${file.name} (${contacts.length} contacts)`);
+    }
 
     // Get column names from the first contact
-    const columns = contacts.length > 0 ? Object.keys(contacts[0]) : [];
+    const columns = allContacts.length > 0 ? Object.keys(allContacts[0]) : [];
+
+    console.log(`📊 Parsed ${files.length} file(s): ${processedFiles.join(', ')}`);
+    console.log(`📋 Total contacts: ${allContacts.length}`);
 
     return c.json({
       success: true,
-      contacts: contacts,
+      contacts: allContacts,
       columns: columns,
-      totalCount: contacts.length,
+      totalCount: allContacts.length,
+      filesProcessed: processedFiles,
     });
   } catch (error) {
     const message =

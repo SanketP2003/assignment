@@ -548,11 +548,13 @@ app.post("/parse-excel", async (c) => {
     );
     const contacts = await FileService.parseExcelFile(filePath);
 
-    const previewContacts = contacts.slice(0, 5);
+    // Get column names from the first contact
+    const columns = contacts.length > 0 ? Object.keys(contacts[0]) : [];
 
     return c.json({
       success: true,
-      contacts: previewContacts,
+      contacts: contacts,
+      columns: columns,
       totalCount: contacts.length,
     });
   } catch (error) {

@@ -65,15 +65,21 @@
       formData.append('excelFile', file);
 
       const response = await api.parseExcel(formData);
-      if (response.success && response.data) {
-        contacts = response.data.contacts || [];
-        contactColumns = response.data.columns || [];
-        toastStore.success(`Loaded ${contacts.length} contacts from Excel`);
+      if (response.success && response.contacts) {
+        contacts = response.contacts;
+        // Use columns from response or extract from first contact
+        contactColumns = response.columns || (contacts.length > 0 ? Object.keys(contacts[0]) : []);
+        const totalCount = response.totalCount || contacts.length;
+        toastStore.success(`Loaded ${totalCount} contacts`);
       } else {
-        toastStore.error(response.message || 'Failed to parse Excel file');
+        toastStore.error(response.message || 'Failed to parse file');
+        contacts = [];
+        contactColumns = [];
       }
     } catch (error) {
-      toastStore.error('Error parsing Excel file');
+      toastStore.error('Error parsing file');
+      contacts = [];
+      contactColumns = [];
     } finally {
       isLoading = false;
     }

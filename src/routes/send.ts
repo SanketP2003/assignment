@@ -136,7 +136,16 @@ app.post("/send", async (c) => {
     }
 
     if (!excelFile || excelFile.size === 0) {
-      return c.json({ success: false, message: "Excel file is required" }, 400);
+      return c.json({ success: false, message: "Contact list file is required (Excel or CSV)" }, 400);
+    }
+
+    // Validate file extension
+    const fileName = excelFile.name.toLowerCase();
+    if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls') && !fileName.endsWith('.csv')) {
+      return c.json({
+        success: false,
+        message: "Invalid file format. Please upload an Excel (.xlsx, .xls) or CSV (.csv) file"
+      }, 400);
     }
 
     if (!htmlTemplateFile || htmlTemplateFile.size === 0) {
@@ -516,7 +525,19 @@ app.post("/parse-excel", async (c) => {
     const excelFile = formData.get("excelFile") as File;
 
     if (!excelFile || excelFile.size === 0) {
-      return c.json({ success: false, message: "Excel file is required" }, 400);
+      return c.json({ success: false, message: "File is required" }, 400);
+    }
+
+    // Check file extension
+    const fileName = excelFile.name.toLowerCase();
+    const isCSV = fileName.endsWith('.csv');
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+    if (!isCSV && !isExcel) {
+      return c.json({
+        success: false,
+        message: "Invalid file format. Please upload an Excel (.xlsx, .xls) or CSV (.csv) file"
+      }, 400);
     }
 
     const arrayBuffer = await excelFile.arrayBuffer();
@@ -536,7 +557,7 @@ app.post("/parse-excel", async (c) => {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to parse Excel file";
+      error instanceof Error ? error.message : "Failed to parse file";
     return c.json({ success: false, message }, 500);
   }
 });

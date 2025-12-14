@@ -256,15 +256,15 @@
         <input
           id="excelFile"
           type="file"
-          accept=".xlsx,.xls"
+          accept=".xlsx,.xls,.csv"
           onchange={handleExcelChange}
           class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         />
         <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center">
           <span class="text-2xl">📊</span>
         </div>
-        <p class="font-semibold text-gray-700 mb-1">Upload Excel File</p>
-        <p class="text-sm text-gray-500">Drag & drop or click to browse (.xlsx, .xls)</p>
+        <p class="font-semibold text-gray-700 mb-1">Upload Contact List</p>
+        <p class="text-sm text-gray-500">Drag & drop or click to browse (.xlsx, .xls, .csv)</p>
       </div>
 
       {#if contacts.length > 0}
